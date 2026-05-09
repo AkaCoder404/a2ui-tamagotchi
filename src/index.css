@@ -24,6 +24,29 @@ html, body {
   50% { transform: translateY(-12px); }
 }
 
+/* Expression-based pet animations */
+@keyframes petExpressionNeutral {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes petExpressionHappy {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-10px); }
+  50% { transform: translateY(0); }
+  75% { transform: translateY(-6px); }
+}
+
+@keyframes petExpressionSad {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+
+@keyframes petExpressionSleepy {
+  0%, 100% { transform: translateY(0); opacity: 0.95; }
+  50% { transform: translateY(4px); opacity: 0.75; }
+}
+
 /* Thought bubble fade in */
 @keyframes fadeInUp {
   from {
