@@ -19,7 +19,8 @@ Why it’s generative UI (not “a chatbot in a trench coat”):
 `https://github.com/AkaCoder404/a2ui-tamagotchi`
 
 ## Link to 2–3 minute demo video
-TODO: add your Loom/YouTube link here.
+Youtube: https://meet.google.com/qtc-jzmx-vui
+
 
 ## Protocols used
 - **A2UI**: declarative UI messages (`surfaceUpdate`, `dataModelUpdate`, `beginRendering`)
