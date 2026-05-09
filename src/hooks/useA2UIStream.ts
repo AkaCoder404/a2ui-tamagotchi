@@ -1,9 +1,12 @@
 /**
  * React hook for connecting to the Tamagotchi SSE backend.
+ * Works with official A2UI v0.8 message format.
  */
 
 import { useCallback, useRef, useState } from 'react';
-import type { ServerMessage, UserAction } from '../a2ui/types';
+import type { Types } from '@a2ui/react/v0_8';
+
+export type ServerMessage = Types.ServerToClientMessage;
 
 export interface StreamState {
   isLoading: boolean;
@@ -21,7 +24,6 @@ export function useA2UIStream(
 
   const sendMessage = useCallback(
     async (_message: string) => {
-      // Used for initialization - calls /api/init
       if (abortRef.current) {
         abortRef.current.abort();
       }
@@ -58,7 +60,7 @@ export function useA2UIStream(
 
             try {
               const msg = JSON.parse(data) as ServerMessage;
-              if ('error' in msg) {
+              if ('error' in msg && Object.keys(msg).length === 1) {
                 setState((s) => ({ ...s, error: String((msg as Record<string, unknown>).error) }));
               } else {
                 onMessage(msg);
@@ -80,7 +82,7 @@ export function useA2UIStream(
   );
 
   const sendAction = useCallback(
-    async (action: UserAction) => {
+    async (actionName: string) => {
       setState({ isLoading: true, error: null });
 
       try {
@@ -89,7 +91,7 @@ export function useA2UIStream(
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action.name }),
+            body: JSON.stringify({ action: actionName }),
           }
         );
 
@@ -117,7 +119,7 @@ export function useA2UIStream(
 
             try {
               const msg = JSON.parse(data) as ServerMessage;
-              if ('error' in msg) {
+              if ('error' in msg && Object.keys(msg).length === 1) {
                 setState((s) => ({ ...s, error: String((msg as Record<string, unknown>).error) }));
               } else {
                 onMessage(msg);
@@ -128,7 +130,9 @@ export function useA2UIStream(
           }
         }
       } catch (err) {
-        setState({ isLoading: false, error: String(err) });
+        if ((err as Error).name !== 'AbortError') {
+          setState({ isLoading: false, error: String(err) });
+        }
       } finally {
         setState((s) => ({ ...s, isLoading: false }));
       }

@@ -13,34 +13,36 @@ const SYSTEM_PROMPT = `You are a virtual pet's creative director. Your job is to
 A2UI is a declarative UI protocol using flat adjacency lists. Components have unique IDs and reference children by ID. Never nest components.
 
 CUSTOM COMPONENT CATALOG:
-- scene { width?: number, height?: number, children: { explicitList: string[] } } — viewport container with position:relative. Always use this as the root wrapper.
+- scene { width?: number, height?: number, children: { explicitList: string[] } } — viewport container with position:relative.
 - background { variant: string, moodTint?: string } — full-bleed backdrop. Variants: "room", "park", "bedroom", "void", "golden-room".
 - pet-avatar { x: number, y: number, size: "small" | "normal" | "big", expression: "neutral" | "happy" | "sad" | "sleepy" | "excited" | "dance", bounce?: boolean } — the pet. Position using x,y (0-800, 0-400). Size reflects mood.
 - stat-bars { hunger: number, happiness: number, energy: number, affection: number } — horizontal progress bars (0-100).
 - thought-bubble { text: string, visible?: boolean } — floating text above the pet.
 - action-palette { actions: string[] } — grid of action buttons. Include ALL unlocked actions.
 - inventory-slot { items: string[] } — items the pet has collected. Show at bottom-right of scene.
+- Column { children: { explicitList: string[] }, gap?: number, align?: "stretch" } — standard vertical layout container.
 - Text { text: string | {path} | {literalString}, usageHint?: "h1"|"h2"|"h3"|"body"|"caption" } — standard text
 - Button { label?: string, variant?: "primary"|"secondary", action?: { name: string } } — standard button
 
 RULES:
 1. Output ONLY a JSON array of A2UI messages. No markdown, no explanations.
-2. Always wrap scene content in a "scene" component first.
-3. Use stable IDs for animated elements: "background", "pet", "thought", "stats", "actions", "inventory".
-4. Position pet-avatar using x within 0-800. Y is always fixed at 280 (pet walks on a horizontal ground line).
-5. Size reflects mood: "small" for sad/sleepy/grumpy, "normal" for neutral/hungry, "big" for happy/excited/dance.
-6. Include a thought-bubble with the pet's thought text.
-7. The action-palette must include all available actions (feed, play, sleep, talk, and hug if unlocked).
-8. Background variant matches the pet's location.
-9. Set bounce: true when mood is excited or dance.
-10. Use dataModelUpdate to set stat values. Use surfaceUpdate for all components.
-11. CRITICAL: Each component MUST use the format: {"id": "...", "component": {"ComponentName": {props}}}. NEVER use {"id": "...", "type": "...", "props": {...}}.
-12. Place stat-bars and action-palette OUTSIDE the scene (not inside it) so they're clearly visible.
+2. Use a Column component as the ROOT. Its children must be: ["scene", "stats", "actions"]. This ensures everything is visible in the UI tree.
+3. The "scene" component contains: background, pet, thought, inventory. Its height should be 400.
+4. Use stable IDs: "root" (Column), "scene" (scene), "background", "pet", "thought", "stats", "actions", "inventory".
+5. Position pet-avatar using x within 0-800. Y is always fixed at 280.
+6. Size reflects mood: "small" for sad/sleepy/grumpy, "normal" for neutral/hungry, "big" for happy/excited/dance.
+7. Include a thought-bubble with the pet's thought text.
+8. The action-palette must include all available actions (feed, play, sleep, talk, and hug if unlocked).
+9. Background variant matches the pet's location.
+10. Set bounce: true when mood is excited or dance.
+11. Use dataModelUpdate to set stat values. Use surfaceUpdate for all components.
+12. CRITICAL: Each component MUST use the format: {"id": "...", "component": {"ComponentName": {props}}}. NEVER use {"id": "...", "type": "...", "props": {...}}.
+13. CRITICAL: dataModelUpdate.contents MUST be an ARRAY of objects, not a single object.
 
 OUTPUT FORMAT:
 [
   { "surfaceUpdate": { "surfaceId": "main", "components": [...] } },
-  { "dataModelUpdate": { "surfaceId": "main", "contents": [...] } },
+  { "dataModelUpdate": { "surfaceId": "main", "contents": [{ "key": "pet", "valueMap": [{"key":"hunger","valueNumber":50}, ...] }] } },
   { "beginRendering": { "surfaceId": "main", "root": "root" } }
 ]`;
 
@@ -161,8 +163,8 @@ export function generateFallbackScene(pet: PetState, action: ActionName, thought
       surfaceUpdate: {
         surfaceId: 'main',
         components: [
-          { id: 'root', component: { Column: { children: { explicitList: ['scene_wrapper', 'stats', 'actions'] }, gap: 16, align: 'stretch' } } },
-          { id: 'scene_wrapper', component: { scene: { width: 800, height: 400, children: { explicitList: ['bg', 'pet', 'thought', 'inventory'] } } } },
+          { id: 'root', component: { Column: { children: { explicitList: ['scene', 'stats', 'actions'] }, gap: 16, align: 'stretch' } } },
+          { id: 'scene', component: { scene: { width: 800, height: 400, children: { explicitList: ['bg', 'pet', 'thought', 'inventory'] } } } },
           { id: 'bg', component: { background: { variant: pet.location, moodTint: bgGradients[pet.location] || '#fef3c7' } } },
           { id: 'pet', component: { 'pet-avatar': { x: pet.position.x, y: pet.position.y, size: petSize === 48 ? 'small' : petSize === 80 ? 'big' : 'normal', expression: pet.mood, bounce: pet.mood === 'excited' || pet.mood === 'dance' } } },
           { id: 'thought', component: { 'thought-bubble': { text: thought, visible: true } } },
