@@ -16,6 +16,7 @@ function AppInner({
   const [logs, setLogs] = useState<string[]>([]);
   const [unlockedNotice, setUnlockedNotice] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [spawnCommand, setSpawnCommand] = useState('');
 
   const handleMessage = useCallback(
     (rawMsg: Types.ServerToClientMessage) => {
@@ -58,7 +59,7 @@ function AppInner({
     [processMessages]
   );
 
-  const { sendMessage, sendAction, isLoading, error } =
+  const { sendMessage, sendAction, sendSpawn, isLoading, error } =
     useA2UIStream(handleMessage);
 
   // Wire action sender ref so parent A2UIProvider can trigger backend calls
@@ -74,6 +75,14 @@ function AppInner({
     sendMessage('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleSpawnSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!spawnCommand.trim()) return;
+    setLogs((prev) => [...prev, `SPAWN: ${spawnCommand.trim()}`].slice(-30));
+    sendSpawn(spawnCommand.trim());
+    setSpawnCommand('');
+  };
 
   return (
     <div
@@ -234,11 +243,69 @@ function AppInner({
         </div>
       )}
 
+      {/* Spawn Input */}
+      <form
+        onSubmit={handleSpawnSubmit}
+        style={{
+          position: 'absolute',
+          bottom: 16,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(17,24,39,0.9)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: 14,
+          padding: '8px 12px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          width: 'min(90vw, 420px)',
+        }}
+      >
+        <span style={{ fontSize: 18, marginLeft: 4 }}>✨</span>
+        <input
+          type="text"
+          value={spawnCommand}
+          onChange={(e) => setSpawnCommand(e.target.value)}
+          placeholder='Try "Spawn a pizza" or "Spawn a toy"'
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            color: '#e5e7eb',
+            fontSize: 14,
+            outline: 'none',
+            padding: '6px 4px',
+          }}
+        />
+        <button
+          type="submit"
+          disabled={!spawnCommand.trim() || isLoading}
+          style={{
+            background: spawnCommand.trim()
+              ? 'rgba(251,191,36,0.9)'
+              : 'rgba(55,65,81,0.5)',
+            border: 'none',
+            borderRadius: 10,
+            padding: '8px 16px',
+            color: spawnCommand.trim() ? '#111827' : '#9ca3af',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: spawnCommand.trim() ? 'pointer' : 'not-allowed',
+            transition: 'all 0.2s',
+          }}
+        >
+          Spawn
+        </button>
+      </form>
+
       {/* Protocol Log */}
       <div
         style={{
           position: 'absolute',
-          bottom: 16,
+          bottom: 72,
           right: 16,
           zIndex: 10,
           display: 'flex',

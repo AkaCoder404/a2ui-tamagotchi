@@ -109,11 +109,88 @@ function useFlexibleResolver(node: any, surfaceId: string) {
 
 // ============== CUSTOM COMPONENTS ==============
 
+const SpawnedItem = memo(function SpawnedItem({ node, surfaceId }: any) {
+  const { resolveStringFlex, resolveNumberFlex, resolveBooleanFlex } =
+    useFlexibleResolver(node, surfaceId);
+  const props = node.properties as Record<string, unknown>;
+
+  const x = resolveNumberFlex(props.x) ?? 400;
+  const y = resolveNumberFlex(props.y) ?? 280;
+  const label = resolveStringFlex(props.label) || 'Item';
+  const emoji = resolveStringFlex(props.emoji) || '📦';
+  const color = resolveStringFlex(props.color) || '#9ca3af';
+  const dropping = resolveBooleanFlex(props.dropping) ?? false;
+
+  return (
+    <div
+      data-spawn-id={node.id}
+      style={{
+        position: 'absolute',
+        left: x - 24,
+        top: y - 24,
+        width: 48,
+        height: 48,
+        borderRadius: '50%',
+        background: '#fff',
+        border: `3px solid ${color}`,
+        boxShadow: `0 4px 16px ${color}66`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 24,
+        zIndex: 5,
+        transition: dropping
+          ? 'none'
+          : 'top 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s',
+        cursor: 'pointer',
+      }}
+    >
+      {emoji}
+      {/* Label tooltip */}
+      <span
+        style={{
+          position: 'absolute',
+          bottom: -22,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: 10,
+          fontWeight: 700,
+          color: '#fff',
+          background: 'rgba(0,0,0,0.7)',
+          padding: '2px 8px',
+          borderRadius: 10,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          opacity: 0.9,
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+});
+
 const Scene = memo(function Scene({ node, surfaceId }: any) {
+  const actions = useA2UIActions();
   const { resolveNumberFlex } = useFlexibleResolver(node, surfaceId);
   const props = node.properties as Record<string, unknown>;
   const children = (props.children as any[]) || [];
   const height = resolveNumberFlex(props.height) ?? 400;
+
+  // Discover spawned-item components from the surface that aren't in the explicit tree
+  const surface = actions.getSurface(surfaceId);
+  const spawnedItemIds: string[] = [];
+  if (surface) {
+    for (const [id, comp] of surface.components) {
+      if (
+        id.startsWith('spawn-') &&
+        comp.component &&
+        'spawned-item' in comp.component
+      ) {
+        spawnedItemIds.push(id);
+      }
+    }
+  }
 
   return (
     <div
@@ -130,6 +207,25 @@ const Scene = memo(function Scene({ node, surfaceId }: any) {
         .map((child) => (
           <ComponentNode key={child.id} node={child} surfaceId={surfaceId} />
         ))}
+      {/* Spawned items overlay */}
+      {spawnedItemIds.map((id) => {
+        const comp = surface!.components.get(id)!;
+        // Build a minimal resolved node for ComponentNode
+        const itemProps = (comp.component as Record<string, unknown>)['spawned-item'];
+        const syntheticNode = {
+          id,
+          type: 'spawned-item',
+          properties: itemProps,
+          dataContextPath: '/',
+        };
+        return (
+          <ComponentNode
+            key={id}
+            node={syntheticNode as any}
+            surfaceId={surfaceId}
+          />
+        );
+      })}
       {/* Ground line */}
       <div
         style={{
@@ -549,4 +645,5 @@ export function registerTamagotchiComponents() {
   registry.register('stat-bars', { component: StatBars });
   registry.register('action-palette', { component: ActionPalette });
   registry.register('inventory-slot', { component: InventorySlot });
+  registry.register('spawned-item', { component: SpawnedItem });
 }

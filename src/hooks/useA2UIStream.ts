@@ -140,5 +140,64 @@ export function useA2UIStream(
     [onMessage]
   );
 
-  return { sendMessage, sendAction, isLoading: state.isLoading, error: state.error };
+  const sendSpawn = useCallback(
+    async (command: string) => {
+      setState({ isLoading: true, error: null });
+
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/spawn?sessionId=${encodeURIComponent(sessionId.current)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command }),
+          }
+        );
+
+        if (!response.body) {
+          throw new Error('No response body');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const msg = JSON.parse(data) as ServerMessage;
+              if ('error' in msg && Object.keys(msg).length === 1) {
+                setState((s) => ({ ...s, error: String((msg as Record<string, unknown>).error) }));
+              } else {
+                onMessage(msg);
+              }
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setState({ isLoading: false, error: String(err) });
+        }
+      } finally {
+        setState((s) => ({ ...s, isLoading: false }));
+      }
+    },
+    [onMessage]
+  );
+
+  return { sendMessage, sendAction, sendSpawn, isLoading: state.isLoading, error: state.error };
 }

@@ -1,6 +1,6 @@
 # A2UI Tomagotchi
 
-A2UI Hakathon Submission
+This is a proof of concept of using A2UI to have agents interact in design systems. Submission for the A2UI Hakathon in Hong Kong.
 
 ## Run Project
 
@@ -15,4 +15,4 @@ npm run server
 npm run dev
 ```
 
-Then open http://localhost:5173. Good luck with the hackathon! 🐾
+Then open http://localhost:5173.
