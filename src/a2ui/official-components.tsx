@@ -112,24 +112,178 @@ function useFlexibleResolver(node: any, surfaceId: string) {
 const SpawnedItem = memo(function SpawnedItem({ node, surfaceId }: any) {
   const { resolveStringFlex, resolveNumberFlex, resolveBooleanFlex } =
     useFlexibleResolver(node, surfaceId);
+  const actions = useA2UIActions();
   const props = node.properties as Record<string, unknown>;
 
   const x = resolveNumberFlex(props.x) ?? 400;
   const y = resolveNumberFlex(props.y) ?? 280;
-  const label = resolveStringFlex(props.label) || 'Item';
+  const title = resolveStringFlex(props.title) || 'Item';
   const emoji = resolveStringFlex(props.emoji) || '📦';
   const color = resolveStringFlex(props.color) || '#9ca3af';
   const dropping = resolveBooleanFlex(props.dropping) ?? false;
+  const cleaningUp = resolveBooleanFlex(props.cleaningUp) ?? false;
+  const type = resolveStringFlex(props.type) || 'emoji';
+  const content = resolveStringFlex(props.content) || '';
+  const buttonLabel = resolveStringFlex(props.buttonLabel) || 'Click';
+  const fields = (props.fields as any[]) || [];
 
+  const baseStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: x,
+    top: y,
+    transform: 'translate(-50%, -50%)',
+    zIndex: 5,
+    transition: dropping
+      ? 'none'
+      : 'top 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s, transform 0.4s',
+    opacity: cleaningUp ? 0 : 1,
+    pointerEvents: cleaningUp ? 'none' : 'auto',
+  };
+
+  // Form type: mini input form
+  if (type === 'form') {
+    return (
+      <div
+        data-spawn-id={node.id}
+        style={{
+          ...baseStyle,
+          width: 200,
+          background: '#fff',
+          borderRadius: 16,
+          border: `2px solid ${color}`,
+          boxShadow: `0 8px 24px ${color}44`,
+          padding: 14,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        <div style={{ fontSize: 16, textAlign: 'center' }}>{emoji}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color, textAlign: 'center' }}>
+          {title}
+        </div>
+        {fields.map((field: any, idx: number) => (
+          <input
+            key={idx}
+            type="text"
+            placeholder={field.placeholder || field.label}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: '1px solid #e5e7eb',
+              fontSize: 12,
+              outline: 'none',
+            }}
+          />
+        ))}
+        <button
+          onClick={() => {
+            actions.dispatch({
+              userAction: {
+                name: 'form-submit',
+                surfaceId,
+                sourceComponentId: node.id,
+                timestamp: new Date().toISOString(),
+                context: { itemType: type, itemTitle: title },
+              },
+            });
+          }}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: 'none',
+            background: color,
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Submit
+        </button>
+      </div>
+    );
+  }
+
+  // Card type: info card
+  if (type === 'card') {
+    return (
+      <div
+        data-spawn-id={node.id}
+        style={{
+          ...baseStyle,
+          width: 180,
+          background: '#fff',
+          borderRadius: 16,
+          border: `2px solid ${color}`,
+          boxShadow: `0 8px 24px ${color}44`,
+          padding: 14,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <div style={{ fontSize: 32 }}>{emoji}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color, textAlign: 'center' }}>
+          {title}
+        </div>
+        {content && (
+          <div style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', lineHeight: 1.4 }}>
+            {content}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Button type: interactive button
+  if (type === 'button') {
+    return (
+      <div
+        data-spawn-id={node.id}
+        style={{
+          ...baseStyle,
+          width: 120,
+          height: 120,
+          borderRadius: '50%',
+          background: color,
+          boxShadow: `0 8px 24px ${color}66`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          cursor: 'pointer',
+        }}
+        onClick={() => {
+          actions.dispatch({
+            userAction: {
+              name: 'spawn-click',
+              surfaceId,
+              sourceComponentId: node.id,
+              timestamp: new Date().toISOString(),
+              context: { itemType: type, itemTitle: title },
+            },
+          });
+        }}
+      >
+        <span style={{ fontSize: 32 }}>{emoji}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>
+          {buttonLabel}
+        </span>
+      </div>
+    );
+  }
+
+  // Emoji type (default): simple circle with emoji
   return (
     <div
       data-spawn-id={node.id}
       style={{
-        position: 'absolute',
-        left: x - 24,
-        top: y - 24,
-        width: 48,
-        height: 48,
+        ...baseStyle,
+        width: 52,
+        height: 52,
         borderRadius: '50%',
         background: '#fff',
         border: `3px solid ${color}`,
@@ -137,20 +291,15 @@ const SpawnedItem = memo(function SpawnedItem({ node, surfaceId }: any) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 24,
-        zIndex: 5,
-        transition: dropping
-          ? 'none'
-          : 'top 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s',
+        fontSize: 26,
         cursor: 'pointer',
       }}
     >
       {emoji}
-      {/* Label tooltip */}
       <span
         style={{
           position: 'absolute',
-          bottom: -22,
+          bottom: -20,
           left: '50%',
           transform: 'translateX(-50%)',
           fontSize: 10,
@@ -164,7 +313,7 @@ const SpawnedItem = memo(function SpawnedItem({ node, surfaceId }: any) {
           opacity: 0.9,
         }}
       >
-        {label}
+        {title}
       </span>
     </div>
   );

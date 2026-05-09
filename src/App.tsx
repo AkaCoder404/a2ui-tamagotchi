@@ -12,7 +12,7 @@ function AppInner({
 }: {
   actionSenderRef: React.MutableRefObject<(name: string) => void>;
 }) {
-  const { processMessages } = useA2UI();
+  const { processMessages, getSurface } = useA2UI();
   const [logs, setLogs] = useState<string[]>([]);
   const [unlockedNotice, setUnlockedNotice] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
@@ -20,8 +20,52 @@ function AppInner({
 
   const handleMessage = useCallback(
     (rawMsg: Types.ServerToClientMessage) => {
+      const msg = rawMsg as any;
+
+      // Handle spawn cleanup (non-standard A2UI message from our backend)
+      if (msg.spawnCleanup) {
+        const surface = getSurface('main');
+        const spawnComps: { id: string; props: any }[] = [];
+        if (surface) {
+          for (const [id, comp] of surface.components) {
+            if (id.startsWith('spawn-') && comp.component && 'spawned-item' in comp.component) {
+              spawnComps.push({ id, props: comp.component['spawned-item'] });
+            }
+          }
+        }
+        if (spawnComps.length > 0) {
+          // Batch cleanup: preserve all existing props and add cleaningUp: true
+          const cleanupMessages = spawnComps.map(({ id, props }) => ({
+            surfaceUpdate: {
+              surfaceId: 'main',
+              components: [
+                {
+                  id,
+                  component: {
+                    'spawned-item': {
+                      ...props,
+                      cleaningUp: true,
+                    },
+                  },
+                },
+              ],
+            },
+          }));
+          try {
+            processMessages(cleanupMessages as any);
+          } catch (err) {
+            console.warn('Cleanup error:', err);
+          }
+          setLogs((prev) =>
+            [...prev, `CLEANUP: fading out ${spawnComps.length} items`].slice(-30)
+          );
+        } else {
+          setLogs((prev) => [...prev, 'CLEANUP: nothing to clean'].slice(-30));
+        }
+        return;
+      }
+
       // Normalize common Gemini mistakes before feeding to the processor
-      const msg = { ...rawMsg } as any;
       if (msg.dataModelUpdate && msg.dataModelUpdate.contents) {
         if (!Array.isArray(msg.dataModelUpdate.contents)) {
           msg.dataModelUpdate.contents = [msg.dataModelUpdate.contents];

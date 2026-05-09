@@ -5,7 +5,7 @@
 import express from 'express';
 import cors from 'cors';
 import { processSessionAction, getSessionState } from './state-store';
-import { generateSceneA2UI, generateFallbackScene } from './agent';
+import { generateSceneA2UI, generateFallbackScene, generateSpawnItemA2UI } from './agent';
 import { generateThought } from './game-engine';
 import type { ActionName } from './game-engine';
 
@@ -120,7 +120,7 @@ app.get('/api/init', async (req, res) => {
 
 /**
  * POST /api/spawn — Spawn an item from user text command
- * Commands: "Spawn a toy", "Spawn a pizza", "Spawn a form", etc.
+ * Commands: "Spawn a toy", "Spawn a pizza", "Spawn a form", "Clean up", etc.
  */
 app.post('/api/spawn', async (req, res) => {
   const sessionId = (req.query.sessionId as string) || 'default';
@@ -131,55 +131,48 @@ app.post('/api/spawn', async (req, res) => {
     return;
   }
 
-  // Parse: "Spawn a toy" → "toy"
-  const itemName = command.replace(/^spawn\s+a?\s*/i, '').trim();
-  const itemKey = itemName.toLowerCase();
-
-  // Random x position (keep within scene bounds with padding)
-  const spawnX = Math.floor(Math.random() * 700) + 50;
-
-  // Item catalog
-  const itemCatalog: Record<string, { emoji: string; color: string; label: string }> = {
-    toy: { emoji: '🧸', color: '#f472b6', label: 'Toy' },
-    pizza: { emoji: '🍕', color: '#f97316', label: 'Pizza' },
-    form: { emoji: '📝', color: '#3b82f6', label: 'Form' },
-    ball: { emoji: '⚽', color: '#22c55e', label: 'Ball' },
-    car: { emoji: '🚗', color: '#ef4444', label: 'Car' },
-    flower: { emoji: '🌸', color: '#ec4899', label: 'Flower' },
-    cake: { emoji: '🎂', color: '#fbbf24', label: 'Cake' },
-    rocket: { emoji: '🚀', color: '#6366f1', label: 'Rocket' },
-    robot: { emoji: '🤖', color: '#8b5cf6', label: 'Robot' },
-    diamond: { emoji: '💎', color: '#06b6d4', label: 'Diamond' },
-  };
-
-  const item = itemCatalog[itemKey] || { emoji: '📦', color: '#9ca3af', label: itemName || 'Item' };
-  const itemId = `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
+  // Handle cleanup
+  if (/^clean\s*up/i.test(command) || /^clear/i.test(command) || /^remove/i.test(command)) {
+    res.write(`data: ${JSON.stringify({ spawnCleanup: true })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
+  }
+
+  // Parse: "Spawn a pizza order form" → "pizza order form"
+  const itemName = command.replace(/^spawn\s+/i, '').trim();
+  const itemKey = itemName.toLowerCase();
+  const spawnX = Math.floor(Math.random() * 680) + 60;
+  const itemId = `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+  // Generate rich item properties dynamically (Gemini) with deterministic fallback
+  let itemProps: Record<string, unknown>;
   try {
-    // Phase 1: Appear at top (above viewport)
+    const generated = await generateSpawnItemA2UI(command);
+    if (generated && typeof generated === 'object' && 'type' in generated) {
+      itemProps = generated;
+    } else {
+      itemProps = generateSpawnItemFallback(itemName, itemKey);
+    }
+  } catch {
+    itemProps = generateSpawnItemFallback(itemName, itemKey);
+  }
+
+  try {
+    // Phase 1: Appear at top
     res.write(`data: ${JSON.stringify({
       surfaceUpdate: {
         surfaceId: 'main',
         components: [
-          { id: itemId, component: { 'spawned-item': {
-            x: spawnX,
-            y: -60,
-            label: item.label,
-            emoji: item.emoji,
-            color: item.color,
-            dropping: true,
-          } } },
+          { id: itemId, component: { 'spawned-item': { x: spawnX, y: -80, dropping: true, ...itemProps } } },
         ],
       },
-    })}
+    })}\n\n`);
 
-`);
-
-    // Small delay so browser creates DOM element before moving it
     await sleep(80);
 
     // Phase 2: Drop to ground
@@ -187,28 +180,149 @@ app.post('/api/spawn', async (req, res) => {
       surfaceUpdate: {
         surfaceId: 'main',
         components: [
-          { id: itemId, component: { 'spawned-item': {
-            x: spawnX,
-            y: 280,
-            label: item.label,
-            emoji: item.emoji,
-            color: item.color,
-            dropping: false,
-          } } },
+          { id: itemId, component: { 'spawned-item': { x: spawnX, y: 280, dropping: false, ...itemProps } } },
         ],
       },
-    })}
-
-`);
+    })}\n\n`);
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ error: String(err) })}
-
-`);
+    res.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`);
   }
 
   res.write('data: [DONE]\n\n');
   res.end();
 });
+
+/**
+ * Deterministic fallback for spawn item generation when Gemini fails.
+ */
+function generateSpawnItemFallback(itemName: string, itemKey: string): Record<string, unknown> {
+  // Form / survey / quiz
+  if (itemKey.includes('form') || itemKey.includes('survey') || itemKey.includes('quiz')) {
+    return {
+      type: 'form',
+      title: itemName.charAt(0).toUpperCase() + itemName.slice(1),
+      emoji: '📝',
+      color: '#3b82f6',
+      fields: [
+        { label: 'Name', placeholder: 'Your name' },
+        { label: 'Message', placeholder: 'Type something...' },
+      ],
+    };
+  }
+
+  // Button / clicker
+  if (itemKey.includes('button') || itemKey.includes('clicker')) {
+    return {
+      type: 'button',
+      title: itemName,
+      emoji: '👆',
+      color: '#22c55e',
+      buttonLabel: 'Tap me!',
+      action: 'spawn-click',
+    };
+  }
+
+  // Card / info / display
+  if (itemKey.includes('card') || itemKey.includes('info') || itemKey.includes('note')) {
+    return {
+      type: 'card',
+      title: itemName,
+      emoji: '📇',
+      color: '#8b5cf6',
+      content: `This is your ${itemName}. Generated by your pet agent!`,
+    };
+  }
+
+  // Food items
+  if (itemKey.includes('pizza')) {
+    return { type: 'emoji', title: 'Pizza', emoji: '🍕', color: '#f97316' };
+  }
+  if (itemKey.includes('burger')) {
+    return { type: 'emoji', title: 'Burger', emoji: '🍔', color: '#f97316' };
+  }
+  if (itemKey.includes('cake')) {
+    return { type: 'emoji', title: 'Cake', emoji: '🎂', color: '#fbbf24' };
+  }
+  if (itemKey.includes('ice cream')) {
+    return { type: 'emoji', title: 'Ice Cream', emoji: '🍦', color: '#f472b6' };
+  }
+
+  // Objects
+  if (itemKey.includes('toy')) {
+    return { type: 'emoji', title: 'Toy', emoji: '🧸', color: '#f472b6' };
+  }
+  if (itemKey.includes('ball')) {
+    return { type: 'emoji', title: 'Ball', emoji: '⚽', color: '#22c55e' };
+  }
+  if (itemKey.includes('car')) {
+    return { type: 'emoji', title: 'Car', emoji: '🚗', color: '#ef4444' };
+  }
+  if (itemKey.includes('rocket')) {
+    return { type: 'emoji', title: 'Rocket', emoji: '🚀', color: '#6366f1' };
+  }
+  if (itemKey.includes('robot')) {
+    return { type: 'emoji', title: 'Robot', emoji: '🤖', color: '#8b5cf6' };
+  }
+  if (itemKey.includes('flower')) {
+    return { type: 'emoji', title: 'Flower', emoji: '🌸', color: '#ec4899' };
+  }
+  if (itemKey.includes('diamond') || itemKey.includes('gem')) {
+    return { type: 'emoji', title: 'Gem', emoji: '💎', color: '#06b6d4' };
+  }
+  if (itemKey.includes('book')) {
+    return { type: 'emoji', title: 'Book', emoji: '📚', color: '#a855f7' };
+  }
+  if (itemKey.includes('phone')) {
+    return { type: 'emoji', title: 'Phone', emoji: '📱', color: '#3b82f6' };
+  }
+  if (itemKey.includes('gift') || itemKey.includes('present')) {
+    return { type: 'emoji', title: 'Gift', emoji: '🎁', color: '#ec4899' };
+  }
+  if (itemKey.includes('music') || itemKey.includes('song')) {
+    return { type: 'emoji', title: 'Music', emoji: '🎵', color: '#f59e0b' };
+  }
+  if (itemKey.includes('camera') || itemKey.includes('photo')) {
+    return { type: 'emoji', title: 'Camera', emoji: '📷', color: '#64748b' };
+  }
+  if (itemKey.includes('clock') || itemKey.includes('time')) {
+    return { type: 'emoji', title: 'Clock', emoji: '⏰', color: '#ef4444' };
+  }
+  if (itemKey.includes('star')) {
+    return { type: 'emoji', title: 'Star', emoji: '⭐', color: '#fbbf24' };
+  }
+  if (itemKey.includes('heart')) {
+    return { type: 'emoji', title: 'Heart', emoji: '❤️', color: '#ef4444' };
+  }
+  if (itemKey.includes('rainbow')) {
+    return { type: 'emoji', title: 'Rainbow', emoji: '🌈', color: '#ec4899' };
+  }
+  if (itemKey.includes('crown')) {
+    return { type: 'emoji', title: 'Crown', emoji: '👑', color: '#fbbf24' };
+  }
+  if (itemKey.includes('ghost')) {
+    return { type: 'emoji', title: 'Ghost', emoji: '👻', color: '#a855f7' };
+  }
+  if (itemKey.includes('alien')) {
+    return { type: 'emoji', title: 'Alien', emoji: '👽', color: '#22c55e' };
+  }
+  if (itemKey.includes('dinosaur') || itemKey.includes('dino')) {
+    return { type: 'emoji', title: 'Dino', emoji: '🦖', color: '#16a34a' };
+  }
+  if (itemKey.includes('dragon')) {
+    return { type: 'emoji', title: 'Dragon', emoji: '🐉', color: '#dc2626' };
+  }
+  if (itemKey.includes('unicorn')) {
+    return { type: 'emoji', title: 'Unicorn', emoji: '🦄', color: '#ec4899' };
+  }
+
+  // Default: generic emoji item
+  return {
+    type: 'emoji',
+    title: itemName.charAt(0).toUpperCase() + itemName.slice(1),
+    emoji: '📦',
+    color: '#9ca3af',
+  };
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

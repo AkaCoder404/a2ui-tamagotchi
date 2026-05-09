@@ -131,6 +131,83 @@ Generate the A2UI JSON array now.`;
   }
 }
 
+/**
+ * Call Gemini to dynamically generate spawn item properties from a user command.
+ * Example: "Spawn a form with name and email" → { type: "form", title: "...", fields: [...] }
+ */
+export async function generateSpawnItemA2UI(
+  command: string
+): Promise<Record<string, unknown> | null> {
+  if (!GEMINI_API_KEY) {
+    return null;
+  }
+
+  const spawnPrompt = `You are a magical item generator for a virtual pet world.
+Given a user command, generate a JSON object describing the item to spawn.
+
+Available types:
+- "emoji" → simple collectible item (circle with emoji). Props: type, title, emoji, color
+- "form" → mini interactive form. Props: type, title, emoji, color, fields(array of {label, placeholder?})
+- "card" → info display card. Props: type, title, emoji, color, content
+- "button" → big clickable button. Props: type, title, emoji, color, buttonLabel
+
+CRITICAL RULES:
+1. Output ONLY a single JSON object. No markdown, no explanations.
+2. Infer the item type from the command. Forms/surveys/quizzes → "form". Cards/notes/info → "card". Buttons/clickers → "button". Everything else → "emoji".
+3. For "form" type, generate fields based on what the user asks for. E.g., "name and email" → fields: [{label:"Name"}, {label:"Email"}]. "feedback form with rating and comment" → fields: [{label:"Rating"}, {label:"Comment", placeholder:"Your feedback..."}].
+4. Use appropriate emoji and color for the item.
+5. The title should be a short capitalized name.
+
+EXAMPLES:
+Command: "Spawn a toy" → {"type":"emoji","title":"Toy","emoji":"🧸","color":"#f472b6"}
+Command: "Spawn a form with name, email and message" → {"type":"form","title":"Contact Form","emoji":"📝","color":"#3b82f6","fields":[{"label":"Name"},{"label":"Email"},{"label":"Message","placeholder":"Type your message..."}]}
+Command: "Spawn a pizza order card" → {"type":"card","title":"Pizza Order","emoji":"🍕","color":"#f97316","content":"Order your favorite pizza with toppings!"}
+Command: "Spawn a big red button" → {"type":"button","title":"Big Button","emoji":"👆","color":"#ef4444","buttonLabel":"DO NOT PRESS"}
+Command: "Spawn a survey with rating and comment" → {"type":"form","title":"Survey","emoji":"📋","color":"#8b5cf6","fields":[{"label":"Rating"},{"label":"Comment","placeholder":"Your thoughts..."}]}
+
+Now generate the item for this command: "${command}"`;
+
+  try {
+    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          { role: 'user', parts: [{ text: spawnPrompt }] },
+        ],
+        generationConfig: {
+          temperature: 0.6,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${err}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      const match = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (match) {
+        try {
+          return JSON.parse(match[1]) as Record<string, unknown>;
+        } catch {
+          // fall through
+        }
+      }
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 // Fallback templates per mood for when Gemini fails or is slow
 export function generateFallbackScene(pet: PetState, action: ActionName, thought: string): unknown[] {
   const availableActions = ['feed', 'play', 'sleep', 'talk'];
